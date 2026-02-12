@@ -15,7 +15,7 @@ The workflow has two phases:
 Start a session at the API root, then explore from there:
 
 ```bash
-npx hal-walk start -s session.json http://localhost:3000/
+npx hal-walk start -s session.json https://agent-wiki.mikekelly321.workers.dev/
 npx hal-walk position -s session.json           # see current position + available links
 npx hal-walk describe -s session.json wiki:pages  # read the relation docs (markdown)
 npx hal-walk follow -s session.json wiki:pages    # follow the link
@@ -35,38 +35,50 @@ Every command except `describe` outputs JSON to stdout. `describe` outputs the r
 </essential_principles>
 
 <commands>
-**Starting and navigating:**
+All commands require `-s, --session FILE`.
 
-| Command | Purpose |
-|---------|---------|
-| `npx hal-walk start -s FILE URL` | Begin session, GET the root resource |
-| `npx hal-walk position -s FILE` | Show current position, response, and available links |
-| `npx hal-walk goto -s FILE POSITION_ID` | Jump to a previous position (local, no HTTP) |
+**`start URL`** — Begin session, GET the root resource.
 
-**Discovering and following links:**
+**`position`** — Show current position, response, and available links.
 
-| Command | Purpose |
-|---------|---------|
-| `npx hal-walk describe -s FILE RELATION` | Fetch relation documentation (outputs markdown) |
-| `npx hal-walk follow -s FILE RELATION` | Follow a link (GET by default) |
-| `npx hal-walk follow -s FILE RELATION --data JSON` | Follow with a request body (POST by default) |
-| `npx hal-walk follow -s FILE RELATION --method PUT --data JSON` | Follow with explicit method |
-| `npx hal-walk follow -s FILE RELATION --template-vars JSON` | Expand a templated link (RFC 6570) |
+**`goto POSITION_ID`** — Jump to a previous position (local, no HTTP request).
 
-**Exporting:**
+**`describe RELATION`** — Fetch relation documentation (outputs markdown, not JSON).
 
-| Command | Purpose |
-|---------|---------|
-| `npx hal-walk render -s FILE` | Generate Mermaid diagram of the session graph |
-| `npx hal-walk export -s FILE` | Export path from start to current position |
-| `npx hal-walk export -s FILE --from POS --to POS` | Export path between specific positions |
+**`follow RELATION`** — Follow a link relation from the current position.
+
+| Option | Description |
+|--------|-------------|
+| `--body JSON` | Request body (JSON string). Defaults method to POST if `--method` not set. |
+| `--body-schema JSON` | JSON Schema for the body, from relation docs. Validates body before sending. If omitted, inferred from body. |
+| `--uri-template-values JSON` | Variables for URI template expansion (RFC 6570), e.g. `'{"vid":"2"}'`. |
+| `--headers JSON` | Custom request headers as JSON object. |
+| `--header-schema JSON` | JSON Schema for headers. Validates headers before sending. If omitted, inferred from headers. |
+| `-m, --method METHOD` | HTTP method override (e.g. PUT, DELETE). |
+| `-n, --note TEXT` | Semantic breadcrumb — brief description of why this step is being taken. |
+
+**`render`** — Generate Mermaid diagram of the session graph.
+
+| Option | Description |
+|--------|-------------|
+| `-o, --output FILE` | Write to file instead of stdout. |
+
+**`export`** — Export a deterministic path spec from the session graph.
+
+| Option | Description |
+|--------|-------------|
+| `-o, --output FILE` | Write to file instead of stdout. |
+| `--from POS_ID` | Start position (defaults to first). |
+| `--to POS_ID` | End position (defaults to current). |
+
+**`session-viewer`** — Serve a web UI for inspecting the session graph. Opens on a free port.
 </commands>
 
 <exploration_workflow>
 **Step 1: Start at the root**
 
 ```bash
-npx hal-walk start -s session.json http://localhost:3000/
+npx hal-walk start -s session.json https://agent-wiki.mikekelly321.workers.dev/
 ```
 
 Read the output. Look at the `links` array — these are the relations you can follow.
@@ -91,19 +103,25 @@ Use what you learned from the docs to construct the follow command:
 
 ```bash
 # For GET links (no body needed):
-npx hal-walk follow -s session.json wiki:pages
+npx hal-walk follow -s session.json wiki:pages \
+  --note "List all pages to find existing content"
 
-# For POST/PUT links (provide --data based on the schema you read):
+# For POST/PUT links (provide --body and --body-schema from the docs you read):
 npx hal-walk follow -s session.json wiki:create-page \
-  --data '{"title": "My Page", "body": "Content here", "tags": ["demo"]}'
+  --body '{"title": "My Page", "body": "Content here", "tags": ["demo"]}' \
+  --body-schema '{"type":"object","properties":{"title":{"type":"string","description":"Page title"},"body":{"type":"string","description":"Page content (markdown)"},"tags":{"type":"array","items":{"type":"string"},"description":"Optional tags"}},"required":["title","body"]}' \
+  --note "Create a new wiki page about demo content"
 
 # For templated links (provide variables):
 npx hal-walk follow -s session.json wiki:search \
-  --template-vars '{"q": "protocols"}'
+  --uri-template-values '{"q": "protocols"}' \
+  --note "Search for pages about protocols"
 
 # For PUT (explicit method override):
 npx hal-walk follow -s session.json wiki:edit-page \
-  --method PUT --data '{"body": "Updated content", "editNote": "Fixed typo"}'
+  --method PUT \
+  --body '{"body": "Updated content", "editNote": "Fixed typo"}' \
+  --note "Fix typo in page content"
 ```
 
 **Step 4: Repeat**
@@ -127,7 +145,7 @@ npx hal-walk render -s session.json    # visualize what you traversed
 npx hal-walk export -s session.json    # export as a path spec
 ```
 
-The path spec is a JSON array of steps with exact relations, methods, and input data. It captures the workflow you discovered so it can be replayed by a simple runner with no inference.
+The path spec is a JSON array of steps with exact relations, methods, body schemas, example data, and notes. It captures the full workflow you discovered — including the contracts you learned and why you took each step — so it can be replayed by a simple runner with no inference.
 
 To export a specific sub-path:
 
@@ -139,7 +157,7 @@ This uses BFS to find the shortest path between two positions in the session gra
 </distillation>
 
 <method_inference>
-The `follow` command defaults to GET. When you provide `--data`, it defaults to POST. For other methods (PUT, DELETE), use `--method` explicitly.
+The `follow` command defaults to GET. When you provide `--body`, it defaults to POST. For other methods (PUT, DELETE), use `--method` explicitly.
 
 How to determine the correct method:
 1. Run `npx hal-walk describe` on the relation
@@ -147,11 +165,19 @@ How to determine the correct method:
 3. Use `--method` if it's not GET or POST
 
 Common patterns:
-- `create-*` relations → POST (inferred from `--data`)
+- `create-*` relations → POST (inferred from `--body`)
 - `edit-*` relations → PUT (use `--method PUT`)
 - `delete-*` relations → DELETE (use `--method DELETE`)
 - Everything else → GET (default)
 </method_inference>
+
+<schema_and_notes>
+**Capture your inference.** When `describe` output includes a JSON Schema for the input, pass it via `--body-schema` to preserve the contract in the session. This captures what you learned — required vs optional fields, types, descriptions — so it's preserved in exports. If you omit `--body-schema`, a basic schema is auto-inferred from the body data, but this loses optionality info and descriptions.
+
+The body is validated against the schema before sending. If they don't match, the command fails immediately — this catches bugs in your data construction.
+
+**Leave breadcrumbs.** Always provide `--note` with a brief description of why you're taking each step. These notes are recorded on transitions and appear in exported path specs and the session viewer. They make your traversal self-documenting — someone reading the export understands not just *what* happened but *why*.
+</schema_and_notes>
 
 <success_criteria>
 Exploration is successful when:
@@ -161,6 +187,7 @@ Exploration is successful when:
 
 Distillation is successful when:
 - `npx hal-walk render` produces a valid Mermaid graph showing the traversal
-- `npx hal-walk export` produces a path spec with concrete steps, relations, and methods
+- `npx hal-walk export` produces a path spec with concrete steps, relations, methods, body schemas, and notes
 - The path spec could be executed by a runner without any LLM inference
+- Each step that sends data has a `bodySchema` capturing the contract and a `note` explaining intent
 </success_criteria>

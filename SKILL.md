@@ -17,8 +17,8 @@ Start a session at the API root, then explore from there:
 ```bash
 npx hal-walk start -s session.json https://agent-wiki.mikekelly321.workers.dev/
 npx hal-walk position -s session.json           # see current position + available links
-npx hal-walk describe -s session.json wiki:pages  # read the relation docs (markdown)
-npx hal-walk follow -s session.json wiki:pages    # follow the link
+npx hal-walk describe -s session.json wiki:v1:pages  # read the relation docs (markdown)
+npx hal-walk follow -s session.json wiki:v1:pages    # follow the link
 ```
 
 Every command except `describe` outputs JSON to stdout. `describe` outputs the raw markdown relation documentation.
@@ -29,7 +29,7 @@ Every command except `describe` outputs JSON to stdout. `describe` outputs the r
 
 **Read before you act.** When you encounter an unfamiliar link relation, use `npx hal-walk describe` to fetch its documentation. The docs tell you the HTTP method, required input schema, and expected response. This is how you figure out what to send — not by guessing.
 
-**CURIEs are namespaced relations.** Links like `wiki:pages` are CURIEs (Compact URIs). The prefix `wiki:` expands to a documentation URL via a template declared at the API root. `npx hal-walk describe` handles this expansion automatically.
+**CURIEs are namespaced relations.** Links like `wiki:v1:pages` are CURIEs (Compact URIs). The prefix `wiki:` expands to a documentation URL via a template declared at the API root (e.g. `wiki:v1:pages` expands to `.../rels/v1:pages`). `npx hal-walk describe` handles this expansion automatically.
 
 **The session is a graph.** Every `follow` records a position (node) and transition (edge). You can jump back to any previous position with `goto` without re-fetching. The graph can be rendered as a Mermaid diagram or exported as a path spec.
 </essential_principles>
@@ -88,7 +88,7 @@ Read the output. Look at the `links` array — these are the relations you can f
 Pick a relation from the links. Fetch its documentation:
 
 ```bash
-npx hal-walk describe -s session.json wiki:create-page
+npx hal-walk describe -s session.json wiki:v1:create-page
 ```
 
 The markdown doc tells you:
@@ -103,22 +103,22 @@ Use what you learned from the docs to construct the follow command:
 
 ```bash
 # For GET links (no body needed):
-npx hal-walk follow -s session.json wiki:pages \
+npx hal-walk follow -s session.json wiki:v1:pages \
   --note "List all pages to find existing content"
 
 # For POST/PUT links (provide --body and --body-schema from the docs you read):
-npx hal-walk follow -s session.json wiki:create-page \
+npx hal-walk follow -s session.json wiki:v1:create-page \
   --body '{"title": "My Page", "body": "Content here", "tags": ["demo"]}' \
   --body-schema '{"type":"object","properties":{"title":{"type":"string","description":"Page title"},"body":{"type":"string","description":"Page content (markdown)"},"tags":{"type":"array","items":{"type":"string"},"description":"Optional tags"}},"required":["title","body"]}' \
   --note "Create a new wiki page about demo content"
 
 # For templated links (provide variables):
-npx hal-walk follow -s session.json wiki:search \
+npx hal-walk follow -s session.json wiki:v1:search \
   --uri-template-values '{"q": "protocols"}' \
   --note "Search for pages about protocols"
 
 # For PUT (explicit method override):
-npx hal-walk follow -s session.json wiki:edit-page \
+npx hal-walk follow -s session.json wiki:v1:edit-page \
   --method PUT \
   --body '{"body": "Updated content", "editNote": "Fixed typo"}' \
   --note "Fix typo in page content"
